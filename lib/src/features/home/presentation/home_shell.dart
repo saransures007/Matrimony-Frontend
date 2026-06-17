@@ -108,13 +108,17 @@ class _BumbleBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final background = scheme.surface;
+    final borderColor = scheme.outline.withValues(alpha: 0.8);
+
     return SafeArea(
       top: false,
       child: Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
+        decoration: BoxDecoration(
+          color: background,
           border: Border(
-            top: BorderSide(color: Color(0xFFEAE7E1)),
+            top: BorderSide(color: borderColor),
           ),
         ),
         child: SizedBox(
@@ -131,6 +135,7 @@ class _BumbleBottomNav extends StatelessWidget {
                     label: item.label,
                     icon: isSelected ? item.activeIcon : item.icon,
                     isSelected: isSelected,
+                    scheme: scheme,
                     onTap: () => onTap(itemIndex),
                   ),
                 );
@@ -141,6 +146,7 @@ class _BumbleBottomNav extends StatelessWidget {
                   label: item.label,
                   icon: isSelected ? item.activeIcon : item.icon,
                   isSelected: isSelected,
+                  scheme: scheme,
                   onTap: () => onTap(itemIndex),
                 ),
               );
@@ -157,18 +163,20 @@ class _NavButton extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.isSelected,
+    required this.scheme,
     required this.onTap,
   });
 
   final String label;
   final IconData icon;
   final bool isSelected;
+  final ColorScheme scheme;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final activeColor = Colors.black;
-    final inactiveColor = const Color(0xFF8F8F8F);
+    final activeColor = scheme.primary;
+    final inactiveColor = scheme.onSurfaceVariant.withValues(alpha: 0.9);
 
     return InkWell(
       onTap: onTap,
@@ -207,20 +215,22 @@ class CenterNavButton extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.isSelected,
+    required this.scheme,
     required this.onTap,
   });
 
   final String label;
   final IconData icon;
   final bool isSelected;
+  final ColorScheme scheme;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final inactiveFill = const Color(0xFFF3F2ED);
-    final activeFill = Colors.black;
-    final activeLabel = Colors.black;
-    final inactiveLabel = const Color(0xFF8F8F8F);
+    final inactiveFill = scheme.surfaceContainerHighest.withValues(alpha: 0.8);
+    final activeFill = scheme.primary;
+    final activeLabel = scheme.primary;
+    final inactiveLabel = scheme.onSurfaceVariant.withValues(alpha: 0.9);
 
     return InkWell(
       onTap: onTap,
@@ -242,7 +252,7 @@ class CenterNavButton extends StatelessWidget {
                 child: Icon(
                   icon,
                   size: 22,
-                  color: isSelected ? Colors.white : const Color(0xFF444444),
+                  color: isSelected ? scheme.onPrimary : scheme.onSurfaceVariant,
                 ),
               ),
             ),

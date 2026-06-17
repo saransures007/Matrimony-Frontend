@@ -5,21 +5,32 @@ import '../../lookups/data/static_data_repository.dart';
 import '../../lookups/domain/lookup_item.dart';
 import '../data/my_profile_repository.dart';
 import '../../media/presentation/profile_picture_upload_page.dart';
+import 'profile_details_edit_page.dart';
 
-const _pageBackground = Color(0xFFF7F8FB);
-const _cardBorder = Color(0xFFE7EAF0);
 const _accent = Color(0xFFD94D67);
 
-class MyProfilePage extends ConsumerWidget {
+class MyProfilePage extends ConsumerStatefulWidget {
   const MyProfilePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MyProfilePage> createState() => _MyProfilePageState();
+}
+
+class _MyProfilePageState extends ConsumerState<MyProfilePage> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() => ref.invalidate(myProfileProvider));
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final profileAsync = ref.watch(myProfileProvider);
     final lookupsAsync = ref.watch(staticDataProvider);
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: _pageBackground,
+      backgroundColor: scheme.surface,
       body: profileAsync.when(
         loading: () => const Center(child: CircularProgressIndicator.adaptive()),
         error: (error, _) => _ProfileErrorView(error: error.toString()),
@@ -36,7 +47,7 @@ class MyProfilePage extends ConsumerWidget {
   }
 }
 
-class _MyProfileContent extends StatelessWidget {
+class _MyProfileContent extends ConsumerWidget {
   const _MyProfileContent({
     required this.profileView,
     required this.lookups,
@@ -46,8 +57,9 @@ class _MyProfileContent extends StatelessWidget {
   final dynamic lookups;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final profile = profileView.profile;
+    final scheme = Theme.of(context).colorScheme;
 
     return CustomScrollView(
       slivers: [
@@ -58,7 +70,7 @@ class _MyProfileContent extends StatelessWidget {
           snap: false,
           elevation: 0,
           expandedHeight: 360,
-          backgroundColor: Colors.black,
+          backgroundColor: scheme.surface,
           surfaceTintColor: Colors.transparent,
           flexibleSpace: _ProfileHeroHeader(
             profileView: profileView,
@@ -71,6 +83,18 @@ class _MyProfileContent extends StatelessWidget {
                 builder: (_) => const ProfilePictureUploadPage(),
               ),
             ),
+            onEditPressed: () async {
+              final updated = await Navigator.of(context).push<MyProfileView?>(
+                MaterialPageRoute<MyProfileView?>(
+                  builder: (_) => ProfileDetailsEditPage(
+                    profileView: profileView,
+                  ),
+                ),
+              );
+              if (updated != null) {
+                ref.invalidate(myProfileProvider);
+              }
+            },
             onPreviewPressed: () => ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Profile preview coming soon')),
             ),
@@ -92,9 +116,6 @@ class _MyProfileContent extends StatelessWidget {
                 _ProfileSectionCard(
                   title: 'Basic details',
                   subtitle: 'Brief outline of personal information',
-                  onEditPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Edit profile details coming soon')),
-                  ),
                   children: [
                     _DetailRowView(
                       icon: Icons.height_rounded,
@@ -122,7 +143,7 @@ class _MyProfileContent extends StatelessWidget {
                     ),
                     _DetailRowView(
                       icon: Icons.currency_rupee_rounded,
-                      label: 'Income',
+                      label: 'Salary',
                       value: _lookup(lookups.incomes, profile.expectedSalaryId),
                     ),
                     _DetailRowView(
@@ -137,9 +158,6 @@ class _MyProfileContent extends StatelessWidget {
                   _ProfileSectionCard(
                     title: 'About me',
                     subtitle: 'Describe yourself in a few words',
-                    onEditPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Edit about me coming soon')),
-                    ),
                     children: [
                       Text(
                         profile.aboutMe!,
@@ -154,9 +172,6 @@ class _MyProfileContent extends StatelessWidget {
                 _ProfileSectionCard(
                   title: 'Education',
                   subtitle: 'Showcase your educational qualification',
-                  onEditPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Edit education coming soon')),
-                  ),
                   children: [
                     _DetailRowView(
                       icon: Icons.school_outlined,
@@ -176,9 +191,6 @@ class _MyProfileContent extends StatelessWidget {
                 _ProfileSectionCard(
                   title: 'Career',
                   subtitle: 'Give a glimpse of your professional life',
-                  onEditPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Edit career coming soon')),
-                  ),
                   children: [
                     _DetailRowView(
                       icon: Icons.apartment_outlined,
@@ -197,9 +209,6 @@ class _MyProfileContent extends StatelessWidget {
                 _ProfileSectionCard(
                   title: 'Family',
                   subtitle: 'Introduce your family members, values and background',
-                  onEditPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Edit family coming soon')),
-                  ),
                   children: [
                     _DetailRowView(
                       icon: Icons.groups_outlined,
@@ -219,9 +228,6 @@ class _MyProfileContent extends StatelessWidget {
                 _ProfileSectionCard(
                   title: 'Contact',
                   subtitle: 'Details that would help profiles get in touch with you',
-                  onEditPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Edit contact details coming soon')),
-                  ),
                   children: [
                     _DetailRowView(
                       icon: Icons.email_outlined,
@@ -239,9 +245,6 @@ class _MyProfileContent extends StatelessWidget {
                 _ProfileSectionCard(
                   title: 'Physical details',
                   subtitle: 'A quick glance at your build',
-                  onEditPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Edit physical details coming soon')),
-                  ),
                   children: [
                     _DetailRowView(
                       icon: Icons.monitor_weight_outlined,
@@ -273,6 +276,7 @@ class _ProfileHeroHeader extends StatelessWidget {
     required this.imageUrl,
     required this.onBackPressed,
     required this.onPhotosPressed,
+    required this.onEditPressed,
     required this.onPreviewPressed,
   });
 
@@ -282,6 +286,7 @@ class _ProfileHeroHeader extends StatelessWidget {
   final String? imageUrl;
   final VoidCallback onBackPressed;
   final VoidCallback onPhotosPressed;
+  final VoidCallback onEditPressed;
   final VoidCallback onPreviewPressed;
 
   String _initialOf(String value) {
@@ -347,6 +352,12 @@ class _ProfileHeroHeader extends StatelessWidget {
                       icon: Icons.photo_library_outlined,
                       label: '${profileView.photosCount}',
                       onPressed: onPhotosPressed,
+                    ),
+                    const SizedBox(width: 10),
+                    _HeroStatButton(
+                      icon: Icons.edit_outlined,
+                      label: 'Edit',
+                      onPressed: onEditPressed,
                     ),
                     const SizedBox(width: 10),
                     _HeroIconButton(
@@ -524,21 +535,22 @@ class _CompletionPromptCard extends StatelessWidget {
             ? const Color(0xFFF59E0B)
             : _accent;
 
-    return InkWell(
+      final scheme = Theme.of(context).colorScheme;
+      return InkWell(
       onTap: onCompletePressed,
       borderRadius: BorderRadius.circular(24),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: scheme.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: const Color(0xFFF0D8DB)),
-          boxShadow: const [
+          border: Border.all(color: scheme.outline.withValues(alpha: 0.9)),
+          boxShadow: [
             BoxShadow(
-              color: Color(0x0D111827),
+              color: scheme.shadow.withValues(alpha: 0.10),
               blurRadius: 18,
-              offset: Offset(0, 8),
+              offset: const Offset(0, 8),
             ),
           ],
         ),
@@ -553,16 +565,16 @@ class _CompletionPromptCard extends StatelessWidget {
                   CircularProgressIndicator(
                     value: completion / 100,
                     strokeWidth: 8,
-                    backgroundColor: const Color(0xFFF2E9EA),
+                    backgroundColor: scheme.surfaceContainerHighest,
                     valueColor: AlwaysStoppedAnimation<Color>(accent),
                   ),
                   Center(
                     child: Text(
                       '$completion%',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 16,
-                        color: Color(0xFF374151),
+                        color: scheme.onSurface,
                       ),
                     ),
                   ),
@@ -578,14 +590,14 @@ class _CompletionPromptCard extends StatelessWidget {
                     'Add a few more details to make your profile rich!',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w900,
-                          color: const Color(0xFF374151),
+                          color: scheme.onSurface,
                         ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Complete your profile',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: _accent,
+                          color: accent,
                           fontWeight: FontWeight.w900,
                         ),
                   ),
@@ -593,9 +605,9 @@ class _CompletionPromptCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(
+            Icon(
               Icons.arrow_forward_rounded,
-              color: _accent,
+              color: accent,
             ),
           ],
         ),
@@ -609,63 +621,50 @@ class _ProfileSectionCard extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.children,
-    required this.onEditPressed,
   });
 
   final String title;
   final String subtitle;
   final List<Widget> children;
-  final VoidCallback onEditPressed;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: _cardBorder),
-        boxShadow: const [
+        border: Border.all(color: scheme.outline.withValues(alpha: 0.9)),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x0A111827),
+            color: scheme.shadow.withValues(alpha: 0.08),
             blurRadius: 16,
-            offset: Offset(0, 8),
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            color: const Color(0xFF111827),
-                          ),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: scheme.onSurface,
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      subtitle,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: const Color(0xFF64748B),
-                            height: 1.35,
-                          ),
-                    ),
-                  ],
-                ),
               ),
-              IconButton(
-                onPressed: onEditPressed,
-                icon: const Icon(Icons.edit_outlined),
-                color: const Color(0xFF667085),
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      height: 1.35,
+                    ),
               ),
             ],
           ),
@@ -703,6 +702,7 @@ class _DetailRowView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -710,10 +710,10 @@ class _DetailRowView extends StatelessWidget {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: const Color(0xFFF4F5F8),
+            color: scheme.surfaceContainerHighest.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(14),
           ),
-          child: Icon(icon, size: 20, color: const Color(0xFF64748B)),
+          child: Icon(icon, size: 20, color: scheme.onSurfaceVariant),
         ),
         const SizedBox(width: 14),
         Expanded(
@@ -723,7 +723,7 @@ class _DetailRowView extends StatelessWidget {
               Text(
                 label,
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: const Color(0xFF64748B),
+                      color: scheme.onSurfaceVariant,
                       fontWeight: FontWeight.w700,
                     ),
               ),
@@ -731,7 +731,7 @@ class _DetailRowView extends StatelessWidget {
               Text(
                 value,
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: const Color(0xFF111827),
+                      color: scheme.onSurface,
                       fontWeight: FontWeight.w800,
                     ),
               ),
@@ -740,7 +740,7 @@ class _DetailRowView extends StatelessWidget {
                 Text(
                   secondaryValue!,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: const Color(0xFF64748B),
+                        color: scheme.onSurfaceVariant,
                         height: 1.3,
                       ),
                 ),

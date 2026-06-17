@@ -86,13 +86,25 @@ class StaticData {
           .toList(growable: false);
     }
 
+    int sortKey(LookupItem item) {
+      return int.tryParse(
+            item.extra['SORTBY']?.toString() ??
+                item.extra['sortBy']?.toString() ??
+                item.extra['sortby']?.toString() ??
+                '0',
+          ) ??
+          0;
+    }
+
+    final incomes = read('income')..sort((a, b) => sortKey(a).compareTo(sortKey(b)));
+
     return StaticData(
       motherTongues: read('mtongue'),
       countries: read('country'),
       states: read('state'),
       cities: read('city'),
       heights: read('height'),
-      incomes: read('income'),
+      incomes: incomes,
       education: read('education'),
       occupation: read('occupation'),
       employedIn: read('employedIn'),

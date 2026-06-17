@@ -146,8 +146,8 @@ class _ProfileDetails extends StatelessWidget {
                         _name(lookups.employedIn, profile.employedInId),
                       ),
                       _DetailRow(
-                        'Income',
-                        _name(lookups.incomes, profile.expectedSalaryId),
+                        'Salary',
+                        _displaySalary(lookups.incomes, profile.expectedSalaryId),
                       ),
                     ],
                   ),
@@ -181,6 +181,12 @@ class _ProfileDetails extends StatelessWidget {
     if (id == null) return 'Not added';
     return items.where((item) => item.id == id).firstOrNull?.name ??
         'Not added';
+  }
+
+  String _displaySalary(List<LookupItem> items, int? id) {
+    final value = _name(items, id);
+    if (value == 'Not added') return value;
+    return value.replaceAll(RegExp(r'[\$₹€£]'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 }
 

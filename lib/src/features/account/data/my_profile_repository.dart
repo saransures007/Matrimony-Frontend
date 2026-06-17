@@ -140,16 +140,36 @@ class MyProfileRepository {
 
   Future<MyProfileView> fetchMyProfile() async {
     final response = await _apiClient.getJson('/users/me');
-    final data = response['data'];
-    if (data is! Map) {
-      throw Exception('Unexpected profile response format');
-    }
-
-    final payload = Map<String, dynamic>.from(data);
-    final profileJson = Map<String, dynamic>.from(
-      payload['profile'] as Map? ?? const {},
-    );
     final pictures = await _pictureRepository.fetchProfilePictures();
+    return _buildProfileView(response, pictures);
+  }
+
+  Future<MyProfileView> updateMyProfile(
+    String accountId,
+    Map<String, dynamic> updates,
+  ) async {
+    await _apiClient.putJson('/users/$accountId', updates);
+    return fetchMyProfile();
+  }
+
+  MyProfileView _buildProfileView(
+    Map<String, dynamic> response,
+    List<ProfilePicture> pictures,
+  ) {
+    final data = response['data'];
+    final payloadSource = data is Map ? data : response;
+    final payload = Map<String, dynamic>.from(payloadSource);
+
+    final profileSource = payload['profile'] is Map
+        ? payload['profile'] as Map
+        : payload;
+    final profileJson = Map<String, dynamic>.from(profileSource);
+
+    final accountSource = payload['account'] is Map
+        ? payload['account'] as Map
+        : const <String, dynamic>{};
+    final accountJson = Map<String, dynamic>.from(accountSource);
+
     final primaryPhoto = pictures.where((item) => item.isProfilePic).isNotEmpty
         ? pictures.firstWhere((item) => item.isProfilePic).url
         : pictures.isNotEmpty
@@ -157,18 +177,50 @@ class MyProfileRepository {
             : null;
 
     return MyProfileView(
-      accountId: payload['accountId'] as String? ?? '',
+      accountId: payload['accountId'] as String? ??
+          accountJson['accountId'] as String? ??
+          accountJson['account_id'] as String? ??
+          '',
       displayName: payload['displayName'] as String? ??
+          payload['display_name'] as String? ??
+          accountJson['displayName'] as String? ??
+          accountJson['display_name'] as String? ??
           profileJson['fullname'] as String? ??
           '',
-      primaryEmail: payload['primaryEmail'] as String?,
-      primaryPhone: payload['primaryPhone'] as String?,
+      primaryEmail: _normalizeText(
+        payload['primaryEmail'] ??
+            payload['primary_email'] ??
+            payload['email'] ??
+            accountJson['primaryEmail'] ??
+            accountJson['primary_email'] ??
+            accountJson['email'] ??
+            profileJson['primaryEmail'] ??
+            profileJson['primary_email'] ??
+            profileJson['email'],
+      ),
+      primaryPhone: _normalizeText(
+        payload['primaryPhone'] ??
+            payload['primary_phone'] ??
+            payload['phone'] ??
+            accountJson['primaryPhone'] ??
+            accountJson['primary_phone'] ??
+            accountJson['phone'] ??
+            profileJson['primaryPhone'] ??
+            profileJson['primary_phone'] ??
+            profileJson['phone'],
+      ),
       profile: MyProfileDetails.fromJson(profileJson),
       primaryPhotoUrl: primaryPhoto,
       photosCount: pictures.length,
       approvedPhotosCount: pictures.where((item) => item.isApproved).length,
       profileCompletion: _completionScore(profileJson, pictures.isNotEmpty),
     );
+  }
+
+  String? _normalizeText(Object? value) {
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty) return null;
+    return text;
   }
 
   int _completionScore(Map<String, dynamic> profileJson, bool hasPhoto) {

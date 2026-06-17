@@ -15,11 +15,6 @@ import 'widgets/preference_widgets.dart'
         showLookupMultiSelectBottomSheet,
         showStringMultiSelectBottomSheet;
 
-const _pageBackground = Colors.white;
-const _headerTint = Color(0xFFFCE7EA);
-const _cardBorder = Color(0xFFEDE6F5);
-const _selectedChipBorder = Color(0xFFFF7B8B);
-const _selectedChipFill = Color(0xFFFBE3E7);
 const _accent = Color(0xFFD94D67);
 
 class ProfilePreferencesPage extends ConsumerStatefulWidget {
@@ -638,7 +633,7 @@ class _ProfilePreferencesPageState
     final scheme = theme.colorScheme;
 
     return Scaffold(
-      backgroundColor: _pageBackground,
+      backgroundColor: scheme.surface,
       bottomNavigationBar: SafeArea(
         minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         child: FilledButton(
@@ -682,8 +677,8 @@ class _ProfilePreferencesPageState
                     toolbarHeight: 56,
                     elevation: 0,
                     scrolledUnderElevation: 0,
-                    backgroundColor: Colors.white,
-                    surfaceTintColor: Colors.white,
+                    backgroundColor: scheme.surface,
+                    surfaceTintColor: Colors.transparent,
                     foregroundColor: scheme.onSurface,
                     titleSpacing: 0,
                     leadingWidth: 48,
@@ -712,11 +707,14 @@ class _ProfilePreferencesPageState
                     flexibleSpace: FlexibleSpaceBar(
                       collapseMode: CollapseMode.pin,
                       background: Container(
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            colors: [_headerTint, Colors.white],
+                            colors: [
+                              scheme.surface,
+                              scheme.surfaceContainerHighest.withValues(alpha: 0.35),
+                            ],
                           ),
                         ),
                         child: SafeArea(
@@ -1439,15 +1437,18 @@ class _SummaryChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return ConstrainedBox(
       constraints: BoxConstraints(minWidth: minWidth),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? _selectedChipFill : Colors.white,
+          color: selected
+              ? scheme.secondaryContainer.withValues(alpha: 0.55)
+              : scheme.surface,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: selected ? _selectedChipBorder : const Color(0xFFD9D9E6),
+            color: selected ? scheme.primary : scheme.outline,
             width: selected ? 1.6 : 1,
           ),
         ),
@@ -1456,7 +1457,7 @@ class _SummaryChip extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: selected ? const Color(0xFF242433) : const Color(0xFF556070),
+            color: selected ? scheme.onSecondaryContainer : scheme.onSurfaceVariant,
             fontSize: 14,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
           ),
@@ -1481,18 +1482,19 @@ class _ExpandablePreferenceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x0C000000),
+            color: scheme.shadow.withValues(alpha: 0.08),
             blurRadius: 16,
-            offset: Offset(0, 8),
+            offset: const Offset(0, 8),
           ),
         ],
-        border: Border.all(color: _cardBorder),
+        border: Border.all(color: scheme.outline),
       ),
       child: Material(
         color: Colors.transparent,
@@ -1509,9 +1511,8 @@ class _ExpandablePreferenceCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         title,
-                        style: const TextStyle(
-                          color: Color(0xFF0F172A),
-                          fontSize: 20,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: scheme.onSurface,
                           fontWeight: FontWeight.w800,
                           letterSpacing: -0.4,
                         ),
@@ -1521,10 +1522,10 @@ class _ExpandablePreferenceCard extends StatelessWidget {
                     AnimatedRotation(
                       turns: expanded ? 0.5 : 0,
                       duration: const Duration(milliseconds: 180),
-                      child: const Icon(
+                      child: Icon(
                         Icons.keyboard_arrow_down_rounded,
                         size: 22,
-                        color: Color(0xFF475569),
+                        color: scheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -1532,9 +1533,8 @@ class _ExpandablePreferenceCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   '${children.length} options',
-                  style: const TextStyle(
-                    color: Color(0xFF667085),
-                    fontSize: 12,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1563,6 +1563,7 @@ class _PreferenceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1576,10 +1577,10 @@ class _PreferenceRow extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: _selectedChipFill,
+                  color: scheme.secondaryContainer.withValues(alpha: 0.5),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, size: 18, color: _accent),
+                child: Icon(icon, size: 18, color: scheme.primary),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1588,9 +1589,8 @@ class _PreferenceRow extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        color: Color(0xFF0F172A),
-                        fontSize: 14,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        color: scheme.onSurface,
                         fontWeight: FontWeight.w700,
                         letterSpacing: -0.2,
                       ),
@@ -1600,9 +1600,8 @@ class _PreferenceRow extends StatelessWidget {
                       value,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF475569),
-                        fontSize: 12,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
                         height: 1.25,
                         fontWeight: FontWeight.w400,
                       ),
@@ -1611,10 +1610,10 @@ class _PreferenceRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              const Icon(
+              Icon(
                 Icons.chevron_right_rounded,
                 size: 20,
-                color: Color(0xFF94A3B8),
+                color: scheme.onSurfaceVariant,
               ),
             ],
           ),
@@ -1629,10 +1628,10 @@ class _CardDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Divider(
+    return Divider(
       height: 1,
       thickness: 1,
-      color: Color(0xFFF0F0F3),
+      color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
       indent: 16,
       endIndent: 16,
     );
@@ -1646,14 +1645,15 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Text(
           message,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Color(0xFF0F172A),
+          style: TextStyle(
+            color: scheme.onSurface,
             fontSize: 14,
             height: 1.4,
           ),

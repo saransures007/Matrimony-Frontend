@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -127,119 +128,79 @@ final filteredDiscoverProfilesProvider = Provider<List<MatchProfile>>((ref) {
 
   return profilesAsync.maybeWhen(
     data: (profiles) {
-      return profiles.where((profile) {
-        final age = profile.age;
-        if (age < filters.ageRange.start || age > filters.ageRange.end) {
-          return false;
-        }
-
-        if (filters.onlyVerified && profile.pictures.isEmpty) {
-          return false;
-        }
-
-        if (filters.premiumOnly && profile.matrimonyModeId != 2) {
-          return false;
-        }
-
-        if (_hasValues(filters.genders) &&
-            (profile.gender.isEmpty || !filters.genders.contains(profile.gender))) {
-          return false;
-        }
-
-        if (_hasValues(filters.maritalStatuses) &&
-            (profile.maritalStatus.isEmpty ||
-                !filters.maritalStatuses.contains(profile.maritalStatus))) {
-          return false;
-        }
-
-        if (_hasValues(filters.countryIds) &&
-            (profile.countryId == null ||
-                !filters.countryIds.contains(profile.countryId))) {
-          return false;
-        }
-
-        if (_hasValues(filters.stateIds) &&
-            filters.countryIds.isNotEmpty &&
-            (profile.stateId == null || !filters.stateIds.contains(profile.stateId))) {
-          return false;
-        }
-
-        if (_hasValues(filters.cityIds) &&
-            filters.countryIds.isNotEmpty &&
-            (profile.cityId == null || !filters.cityIds.contains(profile.cityId))) {
-          return false;
-        }
-
-        if (_hasValues(filters.religionIds) &&
-            (profile.religionId == null ||
-                !filters.religionIds.contains(profile.religionId))) {
-          return false;
-        }
-
-        if (_hasValues(filters.casteIds) &&
-            (profile.casteId == null || !filters.casteIds.contains(profile.casteId))) {
-          return false;
-        }
-
-        if (_hasValues(filters.subcasteIds) &&
-            (profile.subcasteId == null ||
-                !filters.subcasteIds.contains(profile.subcasteId))) {
-          return false;
-        }
-
-        if (_hasValues(filters.kulamIds) &&
-            (profile.kulamId == null || !filters.kulamIds.contains(profile.kulamId))) {
-          return false;
-        }
-
-        if (_hasValues(filters.motherTongueIds) &&
-            (profile.motherTongueId == null ||
-                !filters.motherTongueIds.contains(profile.motherTongueId))) {
-          return false;
-        }
-
-        if (_hasValues(filters.educationDegreeIds) &&
-            (profile.educationDegreeId == null ||
-                !filters.educationDegreeIds.contains(profile.educationDegreeId))) {
-          return false;
-        }
-
-        if (_hasValues(filters.occupationRoleIds) &&
-            (profile.occupationRoleId == null ||
-                !filters.occupationRoleIds.contains(profile.occupationRoleId))) {
-          return false;
-        }
-
-        if (_hasValues(filters.employedInIds) &&
-            (profile.employedInId == null ||
-                !filters.employedInIds.contains(profile.employedInId))) {
-          return false;
-        }
-
-        if (filters.minHeightId != null &&
-            profile.heightId != null &&
-            profile.heightId! < filters.minHeightId!) {
-          return false;
-        }
-
-        if (filters.maxHeightId != null &&
-            profile.heightId != null &&
-            profile.heightId! > filters.maxHeightId!) {
-          return false;
-        }
-
-        return true;
-      }).toList(growable: false);
+      return profiles.where((profile) => _firstRejectReason(profile, filters) == null).toList(growable: false);
     },
     orElse: () => const [],
   );
 });
 
+final discoverFilterDiagnosticsProvider =
+    Provider<DiscoverFilterDiagnostics>((ref) {
+  final profilesAsync = ref.watch(matchesProvider);
+  final filters = ref.watch(discoverFiltersProvider);
+
+  return profilesAsync.maybeWhen(
+    data: (profiles) {
+      final rejectionCounts = <String, int>{};
+      var kept = 0;
+
+      for (final profile in profiles) {
+        final reason = _firstRejectReason(profile, filters);
+        if (reason == null) {
+          kept += 1;
+          continue;
+        }
+
+        rejectionCounts[reason] = (rejectionCounts[reason] ?? 0) + 1;
+      }
+
+      if (kDebugMode) {
+        debugPrint(
+          'Discover filters => total:${profiles.length} kept:$kept rejected:${profiles.length - kept}',
+        );
+        if (rejectionCounts.isNotEmpty) {
+          debugPrint(
+            'Discover filter rejects => ${rejectionCounts.entries.map((entry) => '${entry.key}:${entry.value}').join(', ')}',
+          );
+        }
+      }
+
+      return DiscoverFilterDiagnostics(
+        total: profiles.length,
+        kept: kept,
+        rejected: profiles.length - kept,
+        rejectionCounts: rejectionCounts,
+      );
+    },
+    orElse: DiscoverFilterDiagnostics.empty,
+  );
+});
+
+class DiscoverFilterDiagnostics {
+  const DiscoverFilterDiagnostics({
+    required this.total,
+    required this.kept,
+    required this.rejected,
+    required this.rejectionCounts,
+  });
+
+  const DiscoverFilterDiagnostics.empty()
+      : total = 0,
+        kept = 0,
+        rejected = 0,
+        rejectionCounts = const {};
+
+  final int total;
+  final int kept;
+  final int rejected;
+  final Map<String, int> rejectionCounts;
+}
+
 class DiscoverFiltersController extends StateNotifier<DiscoverFilters> {
   DiscoverFiltersController() : super(const DiscoverFilters.defaults());
 
   void applyPreferences(ProfilePreferencesView preferences) {
-    state = state.copyWith(
+    final next = state.copyWith(
       ageRange: RangeValues(
         (preferences.minAge ?? state.ageRange.start.toInt()).toDouble(),
         (preferences.maxAge ?? state.ageRange.end.toInt()).toDouble(),
@@ -261,6 +222,9 @@ class DiscoverFiltersController extends StateNotifier<DiscoverFilters> {
       minHeightId: preferences.minHeightId,
       maxHeightId: preferences.maxHeightId,
     );
+
+    if (_filtersEqual(state, next)) return;
+    state = next;
   }
 
   void setAgeRange(RangeValues range) {
@@ -337,4 +301,138 @@ class DiscoverFiltersController extends StateNotifier<DiscoverFilters> {
   }
 }
 
+String? _firstRejectReason(MatchProfile profile, DiscoverFilters filters) {
+  final age = profile.age;
+  if (age < filters.ageRange.start || age > filters.ageRange.end) {
+    return 'age';
+  }
+
+  if (filters.onlyVerified && profile.pictures.isEmpty) {
+    return 'verified';
+  }
+
+  if (filters.premiumOnly && profile.matrimonyModeId != 2) {
+    return 'premium';
+  }
+
+  if (_hasValues(filters.genders) &&
+      (profile.gender.isEmpty || !filters.genders.contains(profile.gender))) {
+    return 'gender';
+  }
+
+  if (_hasValues(filters.maritalStatuses) &&
+      (profile.maritalStatus.isEmpty ||
+          !filters.maritalStatuses.contains(profile.maritalStatus))) {
+    return 'marital';
+  }
+
+  if (_hasValues(filters.countryIds) &&
+      (profile.countryId == null ||
+          !filters.countryIds.contains(profile.countryId))) {
+    return 'country';
+  }
+
+  if (_hasValues(filters.stateIds) &&
+      filters.countryIds.isNotEmpty &&
+      (profile.stateId == null || !filters.stateIds.contains(profile.stateId))) {
+    return 'state';
+  }
+
+  if (_hasValues(filters.cityIds) &&
+      filters.countryIds.isNotEmpty &&
+      (profile.cityId == null || !filters.cityIds.contains(profile.cityId))) {
+    return 'city';
+  }
+
+  if (_hasValues(filters.religionIds) &&
+      (profile.religionId == null ||
+          !filters.religionIds.contains(profile.religionId))) {
+    return 'religion';
+  }
+
+  if (_hasValues(filters.casteIds) &&
+      (profile.casteId == null || !filters.casteIds.contains(profile.casteId))) {
+    return 'caste';
+  }
+
+  if (_hasValues(filters.subcasteIds) &&
+      (profile.subcasteId == null ||
+          !filters.subcasteIds.contains(profile.subcasteId))) {
+    return 'subcaste';
+  }
+
+  if (_hasValues(filters.kulamIds) &&
+      (profile.kulamId == null || !filters.kulamIds.contains(profile.kulamId))) {
+    return 'kulam';
+  }
+
+  if (_hasValues(filters.motherTongueIds) &&
+      (profile.motherTongueId == null ||
+          !filters.motherTongueIds.contains(profile.motherTongueId))) {
+    return 'motherTongue';
+  }
+
+  if (_hasValues(filters.educationDegreeIds) &&
+      (profile.educationDegreeId == null ||
+          !filters.educationDegreeIds.contains(profile.educationDegreeId))) {
+    return 'education';
+  }
+
+  if (_hasValues(filters.occupationRoleIds) &&
+      (profile.occupationRoleId == null ||
+          !filters.occupationRoleIds.contains(profile.occupationRoleId))) {
+    return 'occupation';
+  }
+
+  if (_hasValues(filters.employedInIds) &&
+      (profile.employedInId == null ||
+          !filters.employedInIds.contains(profile.employedInId))) {
+    return 'employedIn';
+  }
+
+  if (filters.minHeightId != null &&
+      profile.heightId != null &&
+      profile.heightId! < filters.minHeightId!) {
+    return 'minHeight';
+  }
+
+  if (filters.maxHeightId != null &&
+      profile.heightId != null &&
+      profile.heightId! > filters.maxHeightId!) {
+    return 'maxHeight';
+  }
+
+  return null;
+}
+
 bool _hasValues<T>(List<T> values) => values.isNotEmpty;
+
+bool _filtersEqual(DiscoverFilters a, DiscoverFilters b) {
+  return a.ageRange.start == b.ageRange.start &&
+      a.ageRange.end == b.ageRange.end &&
+      a.onlyVerified == b.onlyVerified &&
+      a.premiumOnly == b.premiumOnly &&
+      _listEquals(a.genders, b.genders) &&
+      _listEquals(a.maritalStatuses, b.maritalStatuses) &&
+      _listEquals(a.countryIds, b.countryIds) &&
+      _listEquals(a.stateIds, b.stateIds) &&
+      _listEquals(a.cityIds, b.cityIds) &&
+      _listEquals(a.religionIds, b.religionIds) &&
+      _listEquals(a.casteIds, b.casteIds) &&
+      _listEquals(a.subcasteIds, b.subcasteIds) &&
+      _listEquals(a.kulamIds, b.kulamIds) &&
+      _listEquals(a.motherTongueIds, b.motherTongueIds) &&
+      _listEquals(a.educationDegreeIds, b.educationDegreeIds) &&
+      _listEquals(a.occupationRoleIds, b.occupationRoleIds) &&
+      _listEquals(a.employedInIds, b.employedInIds) &&
+      a.minHeightId == b.minHeightId &&
+      a.maxHeightId == b.maxHeightId;
+}
+
+bool _listEquals<T>(List<T> a, List<T> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}

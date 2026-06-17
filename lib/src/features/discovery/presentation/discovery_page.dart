@@ -5,12 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../account/data/profile_preferences_repository.dart';
+import '../../account/presentation/profile_preferences_page.dart';
 import '../../lookups/data/static_data_repository.dart';
 import '../../lookups/domain/lookup_item.dart';
 import '../../lookups/domain/static_data.dart';
 import '../data/matches_repository.dart';
 import '../domain/match_profile.dart';
-import 'discover_controller.dart';
+import 'profile_ai_chat_page.dart';
 
 class DiscoveryPage extends ConsumerWidget {
   const DiscoveryPage({super.key});
@@ -19,11 +21,18 @@ class DiscoveryPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final matchesAsync = ref.watch(matchesProvider);
     final lookupsAsync = ref.watch(staticDataProvider);
-    final visibleProfiles = ref.watch(filteredDiscoverProfilesProvider);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    ref.listen(myPreferencesProvider, (previous, next) {
+      next.whenData((preferences) {
+        if (preferences == null) return;
+        ref.invalidate(matchesProvider);
+      });
+    });
+
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: isDark ? const Color(0xFFF3F1EA) : const Color(0xFFF6F2EB),
+      backgroundColor: scheme.surface,
       body: SafeArea(
         bottom: false,
         child: matchesAsync.when(
@@ -35,24 +44,24 @@ class DiscoveryPage extends ConsumerWidget {
               ref.invalidate(staticDataProvider);
             },
           ),
-          data: (_) => lookupsAsync.when(
+          data: (profiles) => lookupsAsync.when(
             loading: () => const _DiscoveryLoadingView(),
             error: (error, _) => _DiscoveryErrorView(
               error: error.toString(),
               onRetry: () => ref.invalidate(staticDataProvider),
             ),
             data: (lookups) {
-              if (visibleProfiles.isEmpty) {
+              if (profiles.isEmpty) {
                 return _DiscoveryEmptyState(
                   onRefresh: () => ref.invalidate(matchesProvider),
-                  onOpenFilters: () => _openFiltersSheet(context, ref, lookups),
+                  onOpenFilters: () => _openMatchPreferences(context),
                 );
               }
 
               return _DiscoverDeck(
-                profiles: visibleProfiles,
+                profiles: profiles,
                 lookups: lookups,
-                onOpenFilters: () => _openFiltersSheet(context, ref, lookups),
+                onOpenFilters: () => _openMatchPreferences(context),
                 onOpenProfile: (profile) => _openExpandedProfile(
                   context,
                   profile,
@@ -144,7 +153,7 @@ class _DiscoverDeckState extends ConsumerState<_DiscoverDeck> {
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
-        barrierColor: Colors.black.withValues(alpha: 0.82),
+        barrierColor: Theme.of(context).colorScheme.scrim,
         builder: (_) => _MatchPopup(
           profile: profile,
           result: result,
@@ -215,8 +224,6 @@ class _DiscoverDeckState extends ConsumerState<_DiscoverDeck> {
   @override
   Widget build(BuildContext context) {
     final profile = _activeProfile;
-    final bottomDock = MediaQuery.of(context).padding.bottom + 16;
-
     if (profile == null) {
       return _DiscoveryEmptyState(
         onRefresh: () => ref.invalidate(matchesProvider),
@@ -283,33 +290,6 @@ class _DiscoverDeckState extends ConsumerState<_DiscoverDeck> {
                   ),
                 ),
               ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: bottomDock,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 26),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _RoundActionButton(
-                        size: 56,
-                        backgroundColor: const Color(0xFFF7D46C),
-                        foregroundColor: const Color(0xFF1E1E1E),
-                        icon: Icons.favorite_rounded,
-                        onTap: () => _swipe(liked: false, superInterest: false),
-                      ),
-                      _RoundActionButton(
-                        size: 76,
-                        backgroundColor: const Color(0xFFF7D46C),
-                        foregroundColor: const Color(0xFF1E1E1E),
-                        icon: Icons.star_rounded,
-                        onTap: () => _swipe(liked: true, superInterest: true),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
             ],
           ),
         ),
@@ -345,12 +325,12 @@ class _SwipeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final images = _profileImages(profile);
     final rotation = isBackground ? 0.0 : (dragOffset.dx / 450).clamp(-0.18, 0.18);
     final likeOpacity = (dragOffset.dx / 150).clamp(0.0, 1.0);
     final nopeOpacity = (-dragOffset.dx / 150).clamp(0.0, 1.0);
     final superOpacity = (-dragOffset.dy / 170).clamp(0.0, 1.0);
+    final scheme = Theme.of(context).colorScheme;
 
     return RepaintBoundary(
       child: AnimatedContainer(
@@ -363,14 +343,12 @@ class _SwipeCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(28),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: scheme.surface,
               borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: isDark ? Colors.black.withValues(alpha: 0.06) : const Color(0xFFE4DED5),
-              ),
+              border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: isBackground ? 0.08 : 0.14),
+                  color: scheme.shadow.withValues(alpha: isBackground ? 0.06 : 0.14),
                   blurRadius: isBackground ? 22 : 36,
                   offset: const Offset(0, 14),
                 ),
@@ -424,7 +402,7 @@ class _SwipeCard extends StatelessWidget {
                     child: _SwipeStamp(
                       text: 'NOPE',
                       opacity: nopeOpacity,
-                      color: _DiscoverColors.reject,
+                      color: scheme.error,
                     ),
                   ),
                   Positioned(
@@ -433,7 +411,7 @@ class _SwipeCard extends StatelessWidget {
                     child: _SwipeStamp(
                       text: 'LIKE',
                       opacity: likeOpacity,
-                      color: _DiscoverColors.like,
+                      color: scheme.primary,
                     ),
                   ),
                   Positioned(
@@ -442,7 +420,7 @@ class _SwipeCard extends StatelessWidget {
                     child: _SwipeStamp(
                       text: 'SUPER',
                       opacity: superOpacity,
-                      color: _DiscoverColors.superInterest,
+                      color: scheme.tertiary,
                     ),
                   ),
                 ],
@@ -478,6 +456,8 @@ class _CardBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -485,11 +465,12 @@ class _CardBottomSheet extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: scheme.surface,
           borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: scheme.outlineVariant),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
+              color: scheme.shadow.withValues(alpha: 0.08),
               blurRadius: 18,
               offset: const Offset(0, 8),
             ),
@@ -506,12 +487,11 @@ class _CardBottomSheet extends StatelessWidget {
                     '${profile.fullname}, ${profile.age}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF1F1F1F),
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.4,
-                    ),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: scheme.onSurface,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.4,
+                        ),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -524,14 +504,13 @@ class _CardBottomSheet extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 4),
-            Text(
-              'We have things in common',
-              style: TextStyle(
-                color: const Color(0xFF1F1F1F).withValues(alpha: 0.8),
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
+            // Text(
+            //   'We have things in common',
+            //   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            //         color: scheme.onSurfaceVariant,
+            //         fontWeight: FontWeight.w700,
+            //       ),
+            // ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
@@ -551,77 +530,6 @@ class _CardBottomSheet extends StatelessWidget {
   }
 }
 
-class _RoundActionButton extends StatelessWidget {
-  const _RoundActionButton({
-    required this.size,
-    required this.backgroundColor,
-    required this.foregroundColor,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final double size;
-  final Color backgroundColor;
-  final Color foregroundColor;
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: backgroundColor.withValues(alpha: 0.30),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Icon(icon, color: foregroundColor, size: 24),
-      ),
-    );
-  }
-}
-
-class _SmallCircleButton extends StatelessWidget {
-  const _SmallCircleButton({
-    required this.icon,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      child: Container(
-        width: 42,
-        height: 42,
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.45),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, color: Colors.white, size: 20),
-      ),
-    );
-  }
-}
-
 class _DiscoverHeader extends StatelessWidget {
   const _DiscoverHeader({required this.onOpenFilters});
 
@@ -629,17 +537,18 @@ class _DiscoverHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Row(
       children: [
-        const Expanded(
+        Expanded(
           child: Text(
             'Discover',
-            style: TextStyle(
-              color: Color(0xFF161616),
-              fontSize: 32,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -1.0,
-            ),
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  color: scheme.onSurface,
+                  fontSize: 32,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -1.0,
+                ),
           ),
         ),
         _HeaderIconButton(
@@ -662,6 +571,7 @@ class _HeaderIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
@@ -671,11 +581,42 @@ class _HeaderIconButton extends StatelessWidget {
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: scheme.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE7E1D7)),
+          border: Border.all(color: scheme.outline),
         ),
-        child: Icon(icon, size: 22, color: const Color(0xFF171717)),
+        child: Icon(icon, size: 22, color: scheme.onSurface),
+      ),
+    );
+  }
+}
+
+class _SmallCircleButton extends StatelessWidget {
+  const _SmallCircleButton({
+    required this.icon,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: scheme.surface.withValues(alpha: 0.55),
+          shape: BoxShape.circle,
+          border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
+        ),
+        child: Icon(icon, color: scheme.onSurface, size: 20),
       ),
     );
   }
@@ -686,35 +627,35 @@ class _DiscoveryLoadingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Center(
       child: Container(
         width: double.infinity,
         margin: const EdgeInsets.fromLTRB(18, 36, 18, 110),
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: scheme.surface,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: const Color(0xFFE6DED3)),
+          border: Border.all(color: scheme.outline),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
+              color: scheme.shadow.withValues(alpha: 0.08),
               blurRadius: 24,
               offset: const Offset(0, 14),
             ),
           ],
         ),
-        child: const Column(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 18),
+            const CircularProgressIndicator(),
+            const SizedBox(height: 18),
             Text(
               'Finding premium profiles...',
-              style: TextStyle(
-                color: Color(0xFF161616),
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: scheme.onSurface,
+                    fontWeight: FontWeight.w700,
+                  ),
             ),
           ],
         ),
@@ -734,18 +675,19 @@ class _DiscoveryEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 22),
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: scheme.surface,
             borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: const Color(0xFFE7E1D7)),
+            border: Border.all(color: scheme.outlineVariant),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
+                color: scheme.shadow.withValues(alpha: 0.08),
                 blurRadius: 24,
                 offset: const Offset(0, 12),
               ),
@@ -757,35 +699,33 @@ class _DiscoveryEmptyState extends StatelessWidget {
               Container(
                 width: 104,
                 height: 104,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF7D46C),
+                decoration: BoxDecoration(
+                  color: scheme.secondaryContainer,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.people_outline_rounded,
                   size: 54,
-                  color: Color(0xFF1E1E1E),
+                  color: scheme.onSecondaryContainer,
                 ),
               ),
               const SizedBox(height: 20),
-              const Text(
+              Text(
                 'No more profiles nearby',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFF161616),
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                ),
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: scheme.onSurface,
+                      fontWeight: FontWeight.w900,
+                    ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Adjust your filters or refresh suggestions to continue discovering compatible matches.',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFF6D6D6D),
-                  fontSize: 13,
-                  height: 1.45,
-                ),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      height: 1.45,
+                    ),
               ),
               const SizedBox(height: 20),
               Row(
@@ -794,8 +734,8 @@ class _DiscoveryEmptyState extends StatelessWidget {
                     child: FilledButton(
                       onPressed: onRefresh,
                       style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFFF7D46C),
-                        foregroundColor: Colors.black,
+                        backgroundColor: scheme.primary,
+                        foregroundColor: scheme.onPrimary,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                       child: const Text('Refresh'),
@@ -806,8 +746,8 @@ class _DiscoveryEmptyState extends StatelessWidget {
                     child: OutlinedButton(
                       onPressed: onOpenFilters,
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF161616),
-                        side: const BorderSide(color: Color(0xFFE7E1D7)),
+                        foregroundColor: scheme.onSurface,
+                        side: BorderSide(color: scheme.outlineVariant),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                       child: const Text('Filters'),
@@ -834,44 +774,44 @@ class _DiscoveryErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24),
         child: Container(
           padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: scheme.surface,
             borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: const Color(0xFFE7E1D7)),
+            border: Border.all(color: scheme.outlineVariant),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.wifi_off_rounded, size: 44, color: Color(0xFF161616)),
+              Icon(Icons.wifi_off_rounded, size: 44, color: scheme.onSurface),
               const SizedBox(height: 14),
-              const Text(
+              Text(
                 'Discover is unavailable',
-                style: TextStyle(
-                  color: Color(0xFF161616),
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                ),
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: scheme.onSurface,
+                      fontWeight: FontWeight.w900,
+                    ),
               ),
               const SizedBox(height: 8),
               Text(
                 error,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Color(0xFF6D6D6D),
-                  height: 1.4,
-                ),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      height: 1.4,
+                    ),
               ),
               const SizedBox(height: 18),
               FilledButton(
                 onPressed: onRetry,
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFF7D46C),
-                  foregroundColor: Colors.black,
+                  backgroundColor: scheme.primary,
+                  foregroundColor: scheme.onPrimary,
                 ),
                 child: const Text('Try again'),
               ),
@@ -935,7 +875,7 @@ class _ProfileDetailPageState extends State<_ProfileDetailPage> {
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
-        barrierColor: Colors.black.withValues(alpha: 0.82),
+        barrierColor: Theme.of(context).colorScheme.scrim,
         builder: (_) => _MatchPopup(
           profile: widget.profile,
           result: result,
@@ -961,28 +901,30 @@ class _ProfileDetailPageState extends State<_ProfileDetailPage> {
   Widget build(BuildContext context) {
     final images = _profileImages(widget.profile);
     final headerHeight = MediaQuery.of(context).size.height * 0.62;
+    final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F2EB),
+      backgroundColor: scheme.surface,
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
           SliverAppBar(
             pinned: true,
             expandedHeight: headerHeight,
-            backgroundColor: const Color(0xFFF6F2EB),
+            backgroundColor: scheme.surface,
+            foregroundColor: scheme.onSurface,
             leading: IconButton(
               onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF161616)),
+              icon: Icon(Icons.arrow_back_rounded, color: scheme.onSurface),
             ),
             actions: [
               IconButton(
                 onPressed: _likeProfile,
-                icon: const Icon(Icons.favorite_border_rounded, color: Color(0xFF161616)),
+                icon: Icon(Icons.favorite_border_rounded, color: scheme.onSurface),
               ),
               IconButton(
                 onPressed: () {},
-                icon: const Icon(Icons.share_outlined, color: Color(0xFF161616)),
+                icon: Icon(Icons.share_outlined, color: scheme.onSurface),
               ),
             ],
             flexibleSpace: FlexibleSpaceBar(
@@ -1037,9 +979,9 @@ class _ProfileDetailPageState extends State<_ProfileDetailPage> {
           ),
           SliverToBoxAdapter(
             child: Container(
-              decoration: const BoxDecoration(
-                color: Color(0xFFF6F2EB),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
               ),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
@@ -1047,9 +989,53 @@ class _ProfileDetailPageState extends State<_ProfileDetailPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _SectionCard(
-                      title: 'Compatibility',
+                      title: 'AI Compatibility',
                       subtitle: 'Balanced for meaningful matrimony conversations.',
-                      child: _CompatibilitySection(profile: widget.profile),
+                      child: _CompatibilitySection(
+                        profile: widget.profile,
+                        onOpenAiChat: () => _openAiChat(
+                          context,
+                          profile: widget.profile,
+                          sectionTitle: 'AI Compatibility',
+                          scoreLabel: '${_compatibilityScore(widget.profile).toStringAsFixed(1)}/10',
+                          prompt: 'Tell me more about ${widget.profile.fullname}.',
+                          prompts: [
+                            'Why did we get ${_compatibilityScore(widget.profile).toStringAsFixed(1)}/10 compatibility?',
+                            'What are our strongest similarities?',
+                            'What potential challenges should I know about?',
+                            'What conversation starters would work?',
+                            'Would we be compatible long-term?',
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    _SectionCard(
+                      title: 'Astrology Match',
+                      subtitle: 'A second lens for families who value it.',
+                      child: _CompatibilitySection(
+                        profile: widget.profile,
+                        scoreValue: _astrologyScore(widget.profile),
+                        scoreLabel: '${_astrologyScore(widget.profile).toStringAsFixed(1)}/10',
+                        compatibilityTitle: 'Astrology Match score',
+                        compatibilityDescription:
+                            'Signs, values, and timing cues can be explored more deeply from this angle.',
+                        actionLabel: 'Ask AI about them →',
+                        onOpenAiChat: () => _openAiChat(
+                          context,
+                          profile: widget.profile,
+                          sectionTitle: 'Astrology Match',
+                          scoreLabel: '${_astrologyScore(widget.profile).toStringAsFixed(1)}/10',
+                          prompt: 'Tell me more about ${widget.profile.fullname}.',
+                          prompts: [
+                            'Why did we get ${_astrologyScore(widget.profile).toStringAsFixed(1)}/10 astrology compatibility?',
+                            'What are our strongest similarities?',
+                            'What potential challenges should I know about?',
+                            'What conversation starters would work?',
+                            'Would we be compatible long-term?',
+                          ],
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     _SectionCard(
@@ -1059,11 +1045,10 @@ class _ProfileDetailPageState extends State<_ProfileDetailPage> {
                         widget.profile.aboutMe?.trim().isNotEmpty == true
                             ? widget.profile.aboutMe!.trim()
                             : 'This profile is awaiting a richer bio.',
-                        style: const TextStyle(
-                          color: Color(0xFF334155),
-                          height: 1.6,
-                          fontSize: 14,
-                        ),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              height: 1.6,
+                            ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -1125,6 +1110,7 @@ class _ProfileHeroSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final detail = [
       _lookup(lookups.occupation, profile.occupationRoleId),
       _locationLabel(lookups, profile),
@@ -1145,7 +1131,7 @@ class _ProfileHeroSummary extends StatelessWidget {
                     height: 4,
                     margin: EdgeInsets.only(right: i == imageCount - 1 ? 0 : 6),
                     decoration: BoxDecoration(
-                      color: i == index ? Colors.white : Colors.white.withValues(alpha: 0.24),
+                      color: i == index ? scheme.onPrimary : scheme.onPrimary.withValues(alpha: 0.24),
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),
@@ -1163,19 +1149,16 @@ class _ProfileHeroSummary extends StatelessWidget {
                 '${profile.fullname}, ${profile.age}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 30,
-                  fontWeight: FontWeight.w900,
-                ),
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: scheme.onPrimary,
+                      fontWeight: FontWeight.w900,
+                    ),
               ),
             ),
             const SizedBox(width: 10),
             _StatusPill(
               label: profile.pictures.isNotEmpty ? 'Verified' : 'Review',
-              icon: profile.pictures.isNotEmpty
-                  ? Icons.verified_rounded
-                  : Icons.lock_outline_rounded,
+              icon: profile.pictures.isNotEmpty ? Icons.verified_rounded : Icons.lock_outline_rounded,
             ),
           ],
         ),
@@ -1184,11 +1167,10 @@ class _ProfileHeroSummary extends StatelessWidget {
           detail.isEmpty ? 'Trusted matrimonial profile' : detail,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.82),
-            fontSize: 13,
-            height: 1.4,
-          ),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: scheme.onPrimary.withValues(alpha: 0.82),
+                height: 1.4,
+              ),
         ),
       ],
     );
@@ -1196,61 +1178,96 @@ class _ProfileHeroSummary extends StatelessWidget {
 }
 
 class _CompatibilitySection extends StatelessWidget {
-  const _CompatibilitySection({required this.profile});
+  const _CompatibilitySection({
+    required this.profile,
+    required this.onOpenAiChat,
+    this.scoreValue,
+    this.scoreLabel,
+    this.compatibilityTitle,
+    this.compatibilityDescription,
+    this.actionLabel = 'Ask AI about them →',
+  });
 
   final MatchProfile profile;
+  final VoidCallback onOpenAiChat;
+  final double? scoreValue;
+  final String? scoreLabel;
+  final String? compatibilityTitle;
+  final String? compatibilityDescription;
+  final String actionLabel;
 
   @override
   Widget build(BuildContext context) {
-    final score = _compatibilityScore(profile);
-    return Row(
+    final scheme = Theme.of(context).colorScheme;
+    final score = scoreValue ?? _compatibilityScore(profile);
+    final scoreText = scoreLabel ?? '${score.toStringAsFixed(1)}/10';
+    final title = compatibilityTitle ?? 'AI compatibility score';
+    final description = compatibilityDescription ??
+        'Shared interests, lifestyle, and partner preferences are aligned for a warm starting point.';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 86,
-          height: 86,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              CircularProgressIndicator(
-                value: score / 100,
-                strokeWidth: 9,
-                backgroundColor: const Color(0xFFE2E8F0),
-                valueColor: const AlwaysStoppedAnimation<Color>(_DiscoverColors.gold),
-              ),
-              Center(
-                child: Text(
-                  '$score%',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                    color: Color(0xFF0F172A),
+        Row(
+          children: [
+            SizedBox(
+              width: 86,
+              height: 86,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CircularProgressIndicator(
+                    value: (score / 10).clamp(0.0, 1.0),
+                    strokeWidth: 9,
+                    backgroundColor: scheme.outlineVariant,
+                    valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
                   ),
-                ),
+                  Center(
+                    child: Text(
+                      scoreText,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                            color: scheme.onSurface,
+                          ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'AI compatibility score',
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                title,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w900,
-                      color: const Color(0xFF0F172A),
+                      color: scheme.onSurface,
                     ),
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Shared interests, lifestyle, and partner preferences are aligned for a warm starting point.',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF475569),
-                      height: 1.35,
-                    ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Text(
+          description,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+                height: 1.35,
               ),
-            ],
+        ),
+        const SizedBox(height: 12),
+        InkWell(
+          onTap: onOpenAiChat,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Text(
+              actionLabel,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
           ),
         ),
       ],
@@ -1269,6 +1286,7 @@ class _DetailGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final items = <_DetailRow>[
       _DetailRow(icon: Icons.cake_outlined, label: 'Age', value: '${profile.age} years'),
       _DetailRow(icon: Icons.person_outline_rounded, label: 'Gender', value: profile.gender),
@@ -1292,9 +1310,9 @@ class _DetailGrid extends StatelessWidget {
             (item) => Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: scheme.outlineVariant),
               ),
               child: Row(
                 children: [
@@ -1302,10 +1320,10 @@ class _DetailGrid extends StatelessWidget {
                     width: 34,
                     height: 34,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF8FAFC),
+                      color: scheme.surface,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(item.icon, size: 16, color: const Color(0xFF475569)),
+                    child: Icon(item.icon, size: 16, color: scheme.onSurfaceVariant),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -1315,22 +1333,20 @@ class _DetailGrid extends StatelessWidget {
                       children: [
                         Text(
                           item.label,
-                          style: const TextStyle(
-                            color: Color(0xFF64748B),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                          ),
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w700,
+                              ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           item.value,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF0F172A),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurface,
+                                fontWeight: FontWeight.w800,
+                              ),
                         ),
                       ],
                     ),
@@ -1371,6 +1387,7 @@ class _StickyActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Row(
       children: [
         Expanded(
@@ -1379,8 +1396,8 @@ class _StickyActions extends StatelessWidget {
             icon: const Icon(Icons.favorite_rounded),
             label: const Text('Like'),
             style: FilledButton.styleFrom(
-              backgroundColor: _DiscoverColors.like,
-              foregroundColor: Colors.white,
+              backgroundColor: scheme.primary,
+              foregroundColor: scheme.onPrimary,
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
           ),
@@ -1392,8 +1409,8 @@ class _StickyActions extends StatelessWidget {
             icon: const Icon(Icons.message_rounded),
             label: const Text('Message'),
             style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF0F172A),
-              side: const BorderSide(color: Color(0xFFE2E8F0)),
+              foregroundColor: scheme.onSurface,
+              side: BorderSide(color: scheme.outlineVariant),
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
           ),
@@ -1405,8 +1422,8 @@ class _StickyActions extends StatelessWidget {
             icon: const Icon(Icons.bookmark_border_rounded),
             label: const Text('Save'),
             style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF0F172A),
-              side: const BorderSide(color: Color(0xFFE2E8F0)),
+              foregroundColor: scheme.onSurface,
+              side: BorderSide(color: scheme.outlineVariant),
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
           ),
@@ -1418,8 +1435,8 @@ class _StickyActions extends StatelessWidget {
             icon: const Icon(Icons.star_rounded),
             label: const Text('Star'),
             style: FilledButton.styleFrom(
-              backgroundColor: _DiscoverColors.gold,
-              foregroundColor: Colors.black,
+              backgroundColor: scheme.secondary,
+              foregroundColor: scheme.onSecondary,
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
           ),
@@ -1446,6 +1463,7 @@ class _MatchPopup extends StatelessWidget {
   Widget build(BuildContext context) {
     final images = _profileImages(profile);
     final firstImage = images.isNotEmpty ? images.first : null;
+    final scheme = Theme.of(context).colorScheme;
 
     return Center(
       child: Padding(
@@ -1458,16 +1476,9 @@ class _MatchPopup extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.black.withValues(alpha: 0.78),
-                    Colors.black.withValues(alpha: 0.58),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+                color: scheme.surface.withValues(alpha: 0.92),
                 borderRadius: BorderRadius.circular(34),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.5)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1480,31 +1491,29 @@ class _MatchPopup extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                         child: Icon(
                           index.isEven ? Icons.favorite_rounded : Icons.auto_awesome_rounded,
-                          color: index.isEven ? _DiscoverColors.like : _DiscoverColors.gold,
+                          color: index.isEven ? scheme.primary : scheme.tertiary,
                           size: 18,
                         ),
                       ),
                     ),
                   ),
                   const SizedBox(height: 18),
-                  const Text(
+                  Text(
                     "It's a Match",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 30,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.8,
-                    ),
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          color: scheme.onSurface,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.8,
+                        ),
                   ),
                   const SizedBox(height: 10),
                   Text(
                     'You and ${profile.fullname} liked each other. ${result.matchId != null ? 'Match #${result.matchId}' : ''}',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.76),
-                      fontSize: 13,
-                      height: 1.4,
-                    ),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                          height: 1.4,
+                        ),
                   ),
                   const SizedBox(height: 22),
                   Row(
@@ -1516,7 +1525,7 @@ class _MatchPopup extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 14),
-                      const Icon(Icons.favorite_rounded, color: _DiscoverColors.like, size: 30),
+                      Icon(Icons.favorite_rounded, color: scheme.primary, size: 30),
                       const SizedBox(width: 14),
                       Expanded(
                         child: _MatchAvatar(
@@ -1533,8 +1542,8 @@ class _MatchPopup extends StatelessWidget {
                         child: FilledButton(
                           onPressed: onMessage,
                           style: FilledButton.styleFrom(
-                            backgroundColor: _DiscoverColors.gold,
-                            foregroundColor: Colors.black,
+                            backgroundColor: scheme.primary,
+                            foregroundColor: scheme.onPrimary,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                           ),
                           child: const Text('Message'),
@@ -1545,8 +1554,8 @@ class _MatchPopup extends StatelessWidget {
                         child: OutlinedButton(
                           onPressed: onContinue,
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.white,
-                            side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
+                            foregroundColor: scheme.onSurface,
+                            side: BorderSide(color: scheme.outlineVariant),
                             padding: const EdgeInsets.symmetric(vertical: 14),
                           ),
                           child: const Text('Keep browsing'),
@@ -1602,13 +1611,14 @@ class _FallbackAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Color(0xFF1D4ED8),
-            Color(0xFF7C3AED),
-            Color(0xFFEC4899),
+            scheme.primaryContainer,
+            scheme.tertiaryContainer,
+            scheme.secondaryContainer,
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -1617,11 +1627,11 @@ class _FallbackAvatar extends StatelessWidget {
       child: Center(
         child: CircleAvatar(
           radius: 36,
-          backgroundColor: Colors.white.withValues(alpha: 0.12),
+          backgroundColor: scheme.surface.withValues(alpha: 0.12),
           child: Text(
             name.isNotEmpty ? name[0].toUpperCase() : '?',
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: scheme.onPrimaryContainer,
               fontSize: 28,
               fontWeight: FontWeight.w900,
             ),
@@ -1643,21 +1653,23 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.45),
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: Colors.white, size: 14),
+          Icon(icon, color: scheme.onSurface, size: 14),
           const SizedBox(width: 6),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: scheme.onSurface,
               fontSize: 11,
               fontWeight: FontWeight.w700,
             ),
@@ -1668,7 +1680,6 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
-
 class _SoftChip extends StatelessWidget {
   const _SoftChip({required this.label});
 
@@ -1676,17 +1687,18 @@ class _SoftChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Text(
         label,
-        style: const TextStyle(
-          color: Color(0xFF0F172A),
+        style: TextStyle(
+          color: scheme.onSurface,
           fontSize: 12,
           fontWeight: FontWeight.w700,
         ),
@@ -1700,16 +1712,17 @@ class _CardShade extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Colors.black.withValues(alpha: 0.02),
-            Colors.black.withValues(alpha: 0.10),
-            Colors.black.withValues(alpha: 0.26),
-            Colors.black.withValues(alpha: 0.74),
+            scheme.shadow.withValues(alpha: 0.02),
+            scheme.shadow.withValues(alpha: 0.10),
+            scheme.shadow.withValues(alpha: 0.26),
+            scheme.shadow.withValues(alpha: 0.74),
           ],
           stops: const [0.0, 0.48, 0.76, 1.0],
         ),
@@ -1723,23 +1736,24 @@ class _CardImagePlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Color(0xFFFFF2E5),
-            Color(0xFFF9CFC0),
-            Color(0xFFFFFBF8),
+            scheme.primaryContainer,
+            scheme.tertiaryContainer,
+            scheme.secondaryContainer,
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
       ),
-      child: const Center(
+      child: Center(
         child: Icon(
           Icons.person_rounded,
           size: 78,
-          color: Color(0xFF7C3AED),
+          color: scheme.onPrimaryContainer,
         ),
       ),
     );
@@ -1753,6 +1767,7 @@ class _StoryPreviewRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Row(
       children: List.generate(
         count.clamp(1, 4),
@@ -1761,7 +1776,7 @@ class _StoryPreviewRow extends StatelessWidget {
             height: 4,
             margin: EdgeInsets.only(right: index == count.clamp(1, 4) - 1 ? 0 : 6),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.24),
+              color: scheme.onPrimary.withValues(alpha: 0.24),
               borderRadius: BorderRadius.circular(999),
             ),
           ),
@@ -1817,7 +1832,7 @@ class _LikeBurstOverlay extends StatelessWidget {
     return Center(
       child: Icon(
         Icons.favorite_rounded,
-        color: _DiscoverColors.like.withValues(alpha: 0.75),
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.75),
         size: 120,
       ),
     );
@@ -1837,13 +1852,14 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1852,14 +1868,14 @@ class _SectionCard extends StatelessWidget {
             title,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w900,
-                  color: const Color(0xFF0F172A),
+                  color: scheme.onSurface,
                 ),
           ),
           const SizedBox(height: 4),
           Text(
             subtitle,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF475569),
+                  color: scheme.onSurfaceVariant,
                 ),
           ),
           const SizedBox(height: 14),
@@ -1871,7 +1887,6 @@ class _SectionCard extends StatelessWidget {
 }
 
 class _DiscoverColors {
-  static const gold = Color(0xFFF7D46C);
   static const like = Color(0xFFEA5C80);
   static const reject = Color(0xFFF45B69);
   static const superInterest = Color(0xFF8B5CF6);
@@ -1902,236 +1917,12 @@ Future<void> _openExpandedProfile(
   );
 }
 
-Future<void> _openFiltersSheet(
-  BuildContext context,
-  WidgetRef ref,
-  StaticData lookups,
-) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (sheetContext) {
-      return DraggableScrollableSheet(
-        initialChildSize: 0.84,
-        minChildSize: 0.5,
-        maxChildSize: 0.96,
-        builder: (context, scrollController) {
-          return ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-            child: Container(
-              color: const Color(0xFFF6F2EB),
-              child: Consumer(
-                builder: (context, ref, _) {
-                  final filters = ref.watch(discoverFiltersProvider);
-                  final controller = ref.read(discoverFiltersProvider.notifier);
-
-                  return CustomScrollView(
-                    controller: scrollController,
-                    slivers: [
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(18, 14, 18, 10),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Center(
-                                child: Container(
-                                  width: 56,
-                                  height: 5,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFCBD5E1),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text(
-                                    'Filters',
-                                    style: TextStyle(
-                                      color: Color(0xFF0F172A),
-                                      fontSize: 26,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                  TextButton(
-                                    onPressed: controller.reset,
-                                    child: const Text('Reset'),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                'Tune your matches for age, community, education and premium preferences.',
-                                style: TextStyle(
-                                  color: Color(0xFF475569),
-                                  height: 1.45,
-                                ),
-                              ),
-                              const SizedBox(height: 18),
-                              _FilterSection(
-                                title: 'Age range',
-                                child: RangeSlider(
-                                  values: filters.ageRange,
-                                  min: 18,
-                                  max: 50,
-                                  divisions: 32,
-                                  labels: RangeLabels(
-                                    filters.ageRange.start.round().toString(),
-                                    filters.ageRange.end.round().toString(),
-                                  ),
-                                  onChanged: controller.setAgeRange,
-                                ),
-                              ),
-                              _FilterSection(
-                                title: 'Quick toggles',
-                                child: Wrap(
-                                  spacing: 10,
-                                  runSpacing: 10,
-                                  children: [
-                                    ChoiceChip(
-                                      label: const Text('Verified photos'),
-                                      selected: filters.onlyVerified,
-                                      onSelected: controller.setOnlyVerified,
-                                    ),
-                                    ChoiceChip(
-                                      label: const Text('Premium only'),
-                                      selected: filters.premiumOnly,
-                                      onSelected: controller.setPremiumOnly,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              _FilterSection(
-                                title: 'Religion',
-                                child: Wrap(
-                                  spacing: 10,
-                                  runSpacing: 10,
-                                  children: _lookupChips(
-                                    lookups.religions,
-                                    filters.religionId,
-                                    controller.setReligion,
-                                  ),
-                                ),
-                              ),
-                              _FilterSection(
-                                title: 'Education',
-                                child: Wrap(
-                                  spacing: 10,
-                                  runSpacing: 10,
-                                  children: _lookupChips(
-                                    lookups.education,
-                                    filters.educationDegreeId,
-                                    controller.setEducation,
-                                  ),
-                                ),
-                              ),
-                              _FilterSection(
-                                title: 'Profession',
-                                child: Wrap(
-                                  spacing: 10,
-                                  runSpacing: 10,
-                                  children: _lookupChips(
-                                    lookups.occupation,
-                                    filters.occupationRoleId,
-                                    controller.setOccupation,
-                                  ),
-                                ),
-                              ),
-                              _FilterSection(
-                                title: 'Height',
-                                child: Wrap(
-                                  spacing: 10,
-                                  runSpacing: 10,
-                                  children: _lookupChips(
-                                    lookups.heights,
-                                    filters.heightId,
-                                    controller.setHeight,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: OutlinedButton(
-                                      onPressed: () => Navigator.of(context).pop(),
-                                      child: const Text('Close'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                    ],
-                  );
-                },
-              ),
-            ),
-          );
-        },
-      );
-    },
-  );
-}
-
-class _FilterSection extends StatelessWidget {
-  const _FilterSection({
-    required this.title,
-    required this.child,
-  });
-
-  final String title;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: Color(0xFF0F172A),
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 10),
-          child,
-        ],
-      ),
-    );
-  }
-}
-
-List<Widget> _lookupChips(
-  List<LookupItem> items,
-  int? selectedId,
-  ValueChanged<int?> onSelected,
-) {
-  return [
-    ChoiceChip(
-      label: const Text('Any'),
-      selected: selectedId == null,
-      onSelected: (selected) => onSelected(selected ? null : selectedId),
+Future<void> _openMatchPreferences(BuildContext context) async {
+  await Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => const ProfilePreferencesPage(),
     ),
-    ...items.take(8).map(
-          (item) => ChoiceChip(
-            label: Text(item.name),
-            selected: selectedId == item.id,
-            onSelected: (selected) => onSelected(selected ? item.id : null),
-          ),
-        ),
-  ];
+  );
 }
 
 String _heroTag(String profileId) => 'discover-profile-$profileId';
@@ -2155,9 +1946,35 @@ String _locationLabel(StaticData lookups, MatchProfile profile) {
   return parts.join(', ');
 }
 
-int _compatibilityScore(MatchProfile profile) {
+double _compatibilityScore(MatchProfile profile) {
   final seed = profile.profileId.codeUnits.fold<int>(0, (sum, value) => sum + value);
-  return 78 + (seed % 15);
+  return 8.0 + (seed % 7) / 10.0;
+}
+
+double _astrologyScore(MatchProfile profile) {
+  final seed = profile.fullname.codeUnits.fold<int>(0, (sum, value) => sum + value);
+  return 7.0 + (seed % 7) / 10.0;
+}
+
+Future<void> _openAiChat(
+  BuildContext context, {
+  required MatchProfile profile,
+  required String sectionTitle,
+  required String scoreLabel,
+  required String prompt,
+  required List<String> prompts,
+}) {
+  return Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => ProfileAiChatPage(
+        profile: profile,
+        sectionTitle: sectionTitle,
+        scoreLabel: scoreLabel,
+        prompt: prompt,
+        prompts: prompts,
+      ),
+    ),
+  );
 }
 
 List<String> _profileImages(MatchProfile profile) {
